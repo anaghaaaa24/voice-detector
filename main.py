@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import base64
 import librosa
 import numpy as np
@@ -13,8 +13,11 @@ API_KEY = "123456"
 # ===================== REQUEST SCHEMA =====================
 class VoiceRequest(BaseModel):
     language: str
-    audio_format: str
-    audio_base64: str
+    audio_format: str = Field(..., alias="audioFormat")
+    audio_base64: str = Field(..., alias="audioBase64")
+
+    class Config:
+        allow_population_by_field_name = True
 
 # ===================== FEATURE EXTRACTION =====================
 def extract_features(file_path: str):
@@ -24,21 +27,18 @@ def extract_features(file_path: str):
     zcr = librosa.feature.zero_crossing_rate(y)
     spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
 
-    features = np.array([
-        np.mean(mfcc),
-        np.var(mfcc),
-        np.mean(zcr),
-        np.mean(spectral_centroid)
-    ])
-
-    return features
+    return {
+        "mfcc_var": float(np.var(mfcc)),
+        "zcr": float(np.mean(zcr)),
+        "centroid": float(np.mean(spectral_centroid))
+    }
 
 # ===================== ROOT =====================
 @app.get("/")
 def root():
     return {
-        "status": "API is running",
-        "service": "Voice Detector + Honeypot"
+        "status": "running",
+        "service": "AI Voice Detector + Honeypot"
     }
 
 # ===================== VOICE DETECTION =====================
@@ -73,14 +73,14 @@ def detect_voice(
     try:
         features = extract_features(filename)
 
-        # Simple heuristic (hackathon-safe)
-        if features[1] < 40 and features[2] < 0.05:
+        # Heuristic-based decision (hackathon safe)
+        if features["mfcc_var"] < 40 and features["zcr"] < 0.05:
             classification = "AI_GENERATED"
-            confidence = 0.82
+            confidence = 0.83
             explanation = "Low spectral variance and uniform MFCC patterns detected"
         else:
             classification = "HUMAN_GENERATED"
-            confidence = 0.78
+            confidence = 0.79
             explanation = "Natural spectral variability detected"
 
     except Exception:
@@ -101,14 +101,12 @@ def detect_voice(
 
 # ===================== HONEYPOT ENDPOINT =====================
 @app.post("/honeypot")
-def honeypot(
-    x_api_key: str = Header(None)
-):
+def honeypot(x_api_key: str = Header(None)):
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API Key")
 
     return {
         "status": "active",
         "message": "Honeypot endpoint reached successfully",
-        "note": "This endpoint is monitored for suspicious activity"
+        "note": "Suspicious activity will be monitored"
     }
