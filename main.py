@@ -6,18 +6,17 @@ import numpy as np
 import uuid
 import os
 
-app = FastAPI(title="AI Voice Detector API")
+app = FastAPI(title="AI Voice Detector & Honeypot API")
 
-# ================= CONFIG =================
 API_KEY = "123456"
 
-# ================= REQUEST MODEL =================
+# ===================== REQUEST SCHEMA =====================
 class VoiceRequest(BaseModel):
     language: str
     audio_format: str
     audio_base64: str
 
-# ================= FEATURE EXTRACTION =================
+# ===================== FEATURE EXTRACTION =====================
 def extract_features(file_path: str):
     y, sr = librosa.load(file_path, sr=16000, mono=True)
 
@@ -34,30 +33,30 @@ def extract_features(file_path: str):
 
     return features
 
-# ================= ROOT ENDPOINT =================
+# ===================== ROOT =====================
 @app.get("/")
 def root():
-    return {"status": "API is running"}
+    return {
+        "status": "API is running",
+        "service": "Voice Detector + Honeypot"
+    }
 
-# ================= DETECT ENDPOINT =================
+# ===================== VOICE DETECTION =====================
 @app.post("/detect")
 def detect_voice(
     request: VoiceRequest,
     x_api_key: str = Header(None)
 ):
-    # 🔐 API KEY CHECK
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API Key")
 
-    # 🎵 FORMAT CHECK
     if request.audio_format.lower() != "mp3":
-        raise HTTPException(status_code=400, detail="Only MP3 audio supported")
+        raise HTTPException(status_code=400, detail="Only MP3 supported")
 
-    # 🔓 BASE64 DECODE
     try:
         audio_bytes = base64.b64decode(request.audio_base64)
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid Base64 audio")
+        raise HTTPException(status_code=400, detail="Invalid Base64")
 
     if len(audio_bytes) < 1000:
         return {
@@ -74,7 +73,7 @@ def detect_voice(
     try:
         features = extract_features(filename)
 
-        # 🧠 SIMPLE HEURISTIC (Hackathon-safe)
+        # Simple heuristic (hackathon-safe)
         if features[1] < 40 and features[2] < 0.05:
             classification = "AI_GENERATED"
             confidence = 0.82
@@ -98,4 +97,18 @@ def detect_voice(
         "confidence": confidence,
         "language": request.language,
         "explanation": explanation
+    }
+
+# ===================== HONEYPOT ENDPOINT =====================
+@app.post("/honeypot")
+def honeypot(
+    x_api_key: str = Header(None)
+):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+
+    return {
+        "status": "active",
+        "message": "Honeypot endpoint reached successfully",
+        "note": "This endpoint is monitored for suspicious activity"
     }
